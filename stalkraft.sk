@@ -1,0 +1,227 @@
+# ==========================================================
+# STALCRAFT SERVER CORE (1.16.5 | Pre-Day X Edition)
+# Кодировка: UTF-8 | Ядро: Mohist / Paper + Skript + WorldGuard
+# ==========================================================
+
+options:
+    prefix: &8[&6Зона&8] &r
+    # Названия регионов WorldGuard (создай их на карте через /rg define)
+    rg_rad: rad_zone
+    rg_shelter: shelter
+    rg_signal_zone: signal_zone
+
+# ----------------------------------------------------------
+# 1. ИНИЦИАЛИЗАЦИЯ И ВЫДАЧА ПРЕДМЕТОВ (/scgive, /bal)
+# ----------------------------------------------------------
+on join:
+    if {rubles::%player's uuid%} is not set:
+        set {rubles::%player's uuid%} to 5000
+    if {rad::%player's uuid%} is not set:
+        set {rad::%player's uuid%} to 0
+
+command /bal:
+    aliases: /balance, /money
+    trigger:
+        send "{@prefix}&7Ваш баланс: &a%{rubles::%player's uuid%}% руб."
+
+command /scgive <text>:
+    permission: op
+    trigger:
+        if arg-1 is "sac":
+            give 1 clock named "&bСАК-1" with lore "&7Детектор узкого диапазона" and "&eПКМ — сканировать сигналы" to player
+        else if arg-1 is "bolt":
+            give 16 iron nugget named "&7Болт" with lore "&7Бросьте (ПКМ), чтобы разрядить аномалию" to player
+        else if arg-1 is "antirad":
+            give 5 paper named "&aАнтирад" with lore "&7Снимает 300 ед. радиации" and "&eПКМ — использовать" to player
+        else if arg-1 is "berloga":
+            give 1 chest named "&6Берлога-6" with lore "&7Контейнер для артефактов (6 слотов)" and "&eПКМ — открыть" to player
+        else if arg-1 is "meduza":
+            give 1 slime ball named "&aАртефакт «Медуза»" with lore "&7Пулестойкость: +1" and "&cРадиация: +1/сек" to player
+        else if arg-1 is "gravi":
+            give 1 magma cream named "&eАртефакт «Грави»" with lore "&7Скорость: +1" and "&cРадиация: +2/сек" to player
+        else if arg-1 is "cristall":
+            give 1 blaze powder named "&cАртефакт «Кристалл»" with lore "&7Регенерация: +1" and "&cРадиация: +2/сек" to player
+        else:
+            send "{@prefix}&cДоступно: sac, bolt, antirad, berloga, meduza, gravi, cristall"
+
+# ----------------------------------------------------------
+# 2. АНОМАЛИИ И БОЛТЫ
+# ----------------------------------------------------------
+command /anomaly <text> <text>:
+    permission: op
+    trigger:
+        if arg-1 is "add":
+            if arg-2 is "tramplin" or "zharka" or "electra":
+                add location of player to {anomalies::%arg-2%::*}
+                send "{@prefix}&aАномалия &e%arg-2% &aустановлена на вашей позиции!"
+        else if arg-1 is "clear":
+            delete {anomalies::*}
+            send "{@prefix}&cВсе аномалии удалены!"
+
+# Бросок болта
+on rightclick with iron nugget:
+    if name of player's tool is "&7Болт":
+        cancel event
+        remove 1 of player's tool from player
+        shoot snowball from player at speed 1.2
+        set {is_bolt::%last shot snowball%} to true
+        play sound "entity.snowball.throw" with volume 0.8 and pitch 0.7 to player
+
+# Разрядка аномалии болтом
+on projectile hit:
+    if {is_bolt::%projectile%} is set:
+        delete {is_bolt::%projectile%}
+        set {_loc} to location of projectile
+        loop "tramplin", "zharka" and "electra":
+            loop {anomalies::%loop-value-1%::*}:
+                if distance between {_loc} and loop-value-2  0:
+                remove 2 from {rad::%{_u}%}
+                if {rad::%{_u}%} < 0:
+                    set {rad::%{_u}%} to 0
+        
+        if {rad::%{_u}%} >= 500:
+            damage loop-player by 1 heart
+            send action bar "&c☢ РАДИАЦИЯ: %{rad::%{_u}%}% ед. (СМЕРТЕЛЬНАЯ ДОЗА)" to loop-player
+        else if {rad::%{_u}%} > 0:
+            send action bar "&e☢ Радиация: %{rad::%{_u}%}% ед." to loop-player
+
+on rightclick with paper:
+    if name of player's tool is "&aАнтирад":
+        cancel event
+        remove 1 of player's tool from player
+        remove 300 from {rad::%player's uuid%}
+        if {rad::%player's uuid%} :
+    permission: op
+    trigger:
+        if arg-1 is "start":
+            if {emission} is true:
+                send "{@prefix}&cВыброс уже идет!"
+                stop
+            set {emission} to true
+            broadcast "&4&l[ВНИМАНИЕ] &cЗафиксирован выброс! Немедленно найдите укрытие!"
+            loop all players:
+                play sound "entity.ender_dragon.growl" with volume 1 and pitch 0.5 to loop-player
+            
+            wait 15 seconds
+            broadcast "&4&l[ВЫБРОС] &cВолна накрыла Зону!"
+            loop 15 times:
+                loop all players:
+if "%region at loop-player%" does not contain "{@rg_shelter}":
+damage loop-player by 2 hearts
+send action bar "&4&lВЫБРОС! НАЙДИТЕ УКРЫТИЕ!" to loop-player
+play sound "entity.lightning_bolt.thunder" with volume 0.5 and pitch 0.7 to loop-player
+wait 1 second
+set {emission} to false
+broadcast "&a&l[ВЫБРОС] &7Выброс окончен. В аномалиях появились свежие артефакты."
+# Спавн артефакта в случайной аномалии
+loop {anomalies::tramplin::}:
+chance of 40%:
+drop 1 slime ball named "&aАртефакт «Медуза»" with lore "&7Пулестойкость: +1" and "&cРадиация: +1/сек" at loop-value
+loop {anomalies::zharka::}:
+chance of 40%:
+drop 1 blaze powder named "&cАртефакт «Кристалл»" with lore "&7Регенерация: +1" and "&cРадиация: +2/сек" at loop-value
+
+----------------------------------------------------------
+
+
+6. КОНТЕЙНЕР «БЕРЛОГА-6» И БАФФЫ АРТЕФАКТОВ
+
+
+----------------------------------------------------------
+
+on rightclick with chest:
+if name of player's tool is "&6Берлога-6":
+cancel event
+open chest inventory with 1 row named "&6Берлога-6" to player
+loop 6 times:
+set {_slot} to loop-number - 1
+if {berloga::%player's uuid%::%{_slot}%} is set:
+set slot {_slot} of player's current inventory to {berloga::%player's uuid%::%{_slot}%}
+set slot 6 of player's current inventory to black stained glass pane named " "
+set slot 7 of player's current inventory to black stained glass pane named " "
+set slot 8 of player's current inventory to black stained glass pane named " "
+on inventory click:
+if name of event-inventory is "&6Берлога-6":
+if clicked slot is 6 or 7 or 8:
+cancel event
+on inventory close:
+if name of event-inventory is "&6Берлога-6":
+loop 6 times:
+set {_slot} to loop-number - 1
+set {berloga::%player's uuid%::%{_slot}%} to slot {_slot} of event-inventory
+
+Применение свойств артефактов из Берлоги-6
+
+every 2 seconds:
+loop all players:
+if loop-player has chest named "&6Берлога-6":
+set {_u} to loop-player's uuid
+loop 6 times:
+set {_slot} to loop-number - 1
+set {_art} to {berloga::%{_u}%::%{_slot}%}
+if name of {_art} is "&aАртефакт «Медуза»":
+apply resistance 1 to loop-player for 3 seconds replacing existing effect
+add 2 to {rad::%{_u}%}
+else if name of {_art} is "&eАртефакт «Грави»":
+apply speed 1 to loop-player for 3 seconds replacing existing effect
+add 4 to {rad::%{_u}%}
+else if name of {_art} is "&cАртефакт «Кристалл»":
+apply regeneration 1 to loop-player for 3 seconds replacing existing effect
+add 4 to {rad::%{_u}%}
+
+----------------------------------------------------------
+
+
+7. ТОРГОВЕЦ И СКУПЩИК (/trader)
+
+
+----------------------------------------------------------
+
+command /trader:
+trigger:
+open chest inventory with 3 rows named "&8Торговец и Скупщик" to player
+set slot 10 of player's current inventory to iron nugget named "&7Купить Болты (16 шт.)" with lore "&7Цена: &a200 руб."
+set slot 11 of player's current inventory to paper named "&aКупить Антирад (1 шт.)" with lore "&7Цена: &a500 руб."
+set slot 15 of player's current inventory to emerald named "&eПродать все маячки" with lore "&7Альфа: 150 руб. | Бета: 350 руб." and "&7Гамма: 700 руб. | Дигамма: 1500 руб."
+on inventory click:
+if name of event-inventory is "&8Торговец и Скупщик":
+cancel event
+set {_u} to player's uuid
+if clicked slot is 10:
+if {rubles::%{_u}%} >= 200:
+remove 200 from {rubles::%{_u}%}
+give 16 iron nugget named "&7Болт" with lore "&7Бросьте (ПКМ), чтобы разрядить аномалию" to player
+send "{@prefix}&aВы купили 16 болтов."
+else:
+send "{@prefix}&cНедостаточно рублей!"
+else if clicked slot is 11:
+if {rubles::%{_u}%} >= 500:
+remove 500 from {rubles::%{_u}%}
+give 1 paper named "&aАнтирад" with lore "&7Снимает 300 ед. радиации" and "&eПКМ — использовать" to player
+send "{@prefix}&aВы купили Антирад."
+else:
+send "{@prefix}&cНедостаточно рублей!"
+else if clicked slot is 15:
+set {_total} to 0
+set {_a} to amount of light blue dye named "&bМаячок группы «Альфа»" in player's inventory
+if {_a} > 0:
+remove {_a} of light blue dye named "&bМаячок группы «Альфа»" from player's inventory
+add ({_a} * 150) to {_total}
+set {_b} to amount of lime dye named "&aМаячок группы «Бета»" in player's inventory
+if {_b} > 0:
+remove {_b} of lime dye named "&aМаячок группы «Бета»" from player's inventory
+add ({_b} * 350) to {_total}
+set {_g} to amount of yellow dye named "&eМаячок группы «Гамма»" in player's inventory
+if {_g} > 0:
+remove {_g} of yellow dye named "&eМаячок группы «Гамма»" from player's inventory
+add ({_g} * 700) to {_total}
+set {_d} to amount of magenta dye named "&dМаячок группы «Дигамма»" in player's inventory
+if {_d} > 0:
+remove {_d} of magenta dye named "&dМаячок группы «Дигамма»" from player's inventory
+add ({_d} * 1500) to {_total}
+if {_total} > 0:
+add {_total} to {rubles::%{_u}%}
+play sound "entity.experience_orb.pickup" to player
+send "{@prefix}&aВы продали маячки на сумму &e%{_total}% руб."
+else:
+send "{@prefix}&cУ вас нет маячков на продажу!"
